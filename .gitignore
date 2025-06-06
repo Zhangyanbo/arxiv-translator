@@ -2,9 +2,21 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.DS_Store
 
 # C extensions
 *.so
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.pdf
+*.tex
+*.test
+*.txt
+*.ipynb
+*.json
 
 # Distribution / packaging
 .Python

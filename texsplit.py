@@ -48,32 +48,70 @@ def _find_first_env(nodes: List[LatexNode], name: str) -> Optional[LatexEnvironm
 
 
 def _remove_comments(tex: str) -> str:
-    """精确去注释：借助 CommentNode，避免误删 verbatim 中的 %。"""
+    """
+    去除注释
+    """
+    import re
+    from pylatexenc.latexwalker import LatexWalker, LatexCommentNode
+
     walker = LatexWalker(tex)
     nodelist, _, _ = walker.get_latex_nodes()
 
-    spans: List[Tuple[int, int]] = []
+    # 收集注释区间
+    spans = []
     for nd in _walk_nodes(nodelist):
         if isinstance(nd, LatexCommentNode):
             spans.append((nd.pos, nd.pos + nd.len))
-
-    if not spans:
-        return tex
-
     spans.sort()
-    merged: List[Tuple[int, int]] = []
-    for s, e in spans:
-        if not merged or s > merged[-1][1]:
-            merged.append((s, e))
-        else:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], e))
 
-    out, cur = [], 0
-    for s, e in merged:
-        out.append(tex[cur:s])
+    parts = []
+    cur = 0
+    n = len(tex)
+
+    for s, e in spans:
+        if s < cur:
+            # 重叠/嵌套的健壮性处理
+            continue
+
+        # 先加入注释前的文本
+        parts.append(tex[cur:s])
+
+        ctext = tex[s:e]  # 注释节点文本（可能包含换行与下一行缩进）
+
+        # 找出注释文本中“最后一个”换行（优先 CRLF）
+        last_eol_idx = -1
+        last_eol_len = 0
+        idx = ctext.rfind("\r\n")
+        if idx != -1:
+            last_eol_idx, last_eol_len = idx, 2
+        else:
+            idx = ctext.rfind("\n")
+            if idx != -1:
+                last_eol_idx, last_eol_len = idx, 1
+            else:
+                idx = ctext.rfind("\r")
+                if idx != -1:
+                    last_eol_idx, last_eol_len = idx, 1
+
+        if last_eol_idx != -1:
+            # 注释节点本身包含换行：补回“该换行”以及注释节点内部紧随其后的缩进
+            parts.append(ctext[last_eol_idx:last_eol_idx + last_eol_len])
+            indent = re.match(r"[ \t]*", ctext[last_eol_idx + last_eol_len:]).group(0)
+            parts.append(indent)
+        else:
+            # 注释节点不含换行：若注释后面也没有换行字符，则补一个换行，避免把两行粘在一行
+            if not (e < n and tex[e] in "\r\n"):
+                parts.append("\n")
+
         cur = e
-    out.append(tex[cur:])
-    return "".join(out)
+
+    parts.append(tex[cur:])
+    out = "".join(parts)
+
+    # 合并多余空行：将连续≥2个“空行”（允许行内只含空白）压缩为恰好一个空行（两个换行）
+    out = re.sub(r"(?:[ \t]*(?:\r?\n)){3,}", "\n\n", out)
+
+    return out
 
 
 def _document_body_bounds(tex: str, nodelist: List[LatexNode]) -> Tuple[int, int, Optional[LatexEnvironmentNode]]:

@@ -49,7 +49,11 @@ def _find_first_env(nodes: List[LatexNode], name: str) -> Optional[LatexEnvironm
 
 def _remove_comments(tex: str) -> str:
     """
-    去除注释
+    去除注释，并保持：
+      - 行尾注释（代码后面的 % ...）删除后，仍保留该行的换行与（若存在于注释节点内的）下一行缩进；
+      - 仅由“整行注释”（行首仅空白后直接 %）分隔的两段文字，删除后不留下任何空行（不会出现多一个空白行）；
+      - 多个连续空白行压缩为一个空行（最多两个换行符）。
+    依赖 pylatexenc 的 LatexCommentNode，避免误伤 verbatim 等环境。
     """
     import re
     from pylatexenc.latexwalker import LatexWalker, LatexCommentNode
@@ -73,12 +77,20 @@ def _remove_comments(tex: str) -> str:
             # 重叠/嵌套的健壮性处理
             continue
 
-        # 先加入注释前的文本
+        # 追加注释前的原文
         parts.append(tex[cur:s])
 
-        ctext = tex[s:e]  # 注释节点文本（可能包含换行与下一行缩进）
+        ctext = tex[s:e]
 
-        # 找出注释文本中“最后一个”换行（优先 CRLF）
+        # 判断是否“整行注释”：从本行行首到 '%' 之间只有空白
+        # 找到本行起点
+        prev_nl = tex.rfind('\n', 0, s)
+        prev_cr = tex.rfind('\r', 0, s)
+        line_start = max(prev_nl, prev_cr) + 1 if max(prev_nl, prev_cr) != -1 else 0
+        line_prefix = tex[line_start:s]
+        full_line_comment = re.fullmatch(r'[ \t]*', line_prefix) is not None
+
+        # 检测注释文本中是否包含换行（以及提取“最后一个”换行的具体序列）
         last_eol_idx = -1
         last_eol_len = 0
         idx = ctext.rfind("\r\n")
@@ -94,22 +106,32 @@ def _remove_comments(tex: str) -> str:
                     last_eol_idx, last_eol_len = idx, 1
 
         if last_eol_idx != -1:
-            # 注释节点本身包含换行：补回“该换行”以及注释节点内部紧随其后的缩进
-            parts.append(ctext[last_eol_idx:last_eol_idx + last_eol_len])
-            indent = re.match(r"[ \t]*", ctext[last_eol_idx + last_eol_len:]).group(0)
-            parts.append(indent)
+            # 注释节点内自带换行
+            if not full_line_comment:
+                # 行尾注释：保留该换行，并在注释节点内提取紧随其后的缩进（若存在）
+                parts.append(ctext[last_eol_idx:last_eol_idx + last_eol_len])
+                indent = re.match(r"[ \t]*", ctext[last_eol_idx + last_eol_len:]).group(0)
+                parts.append(indent)
+            else:
+                # 整行注释：完全删除该行（不补任何换行），从而不会留下空白行
+                pass
         else:
-            # 注释节点不含换行：若注释后面也没有换行字符，则补一个换行，避免把两行粘在一行
-            if not (e < n and tex[e] in "\r\n"):
-                parts.append("\n")
+            # 注释节点不含换行（例如文件末尾的行尾注释）
+            if not full_line_comment:
+                # 行尾注释：若后面没有现成的换行，就补一个换行，避免把两行粘在一起
+                if not (e < n and tex[e] in "\r\n"):
+                    parts.append("\n")
+            else:
+                # 整行注释（且注释本身无换行，通常发生在文件末尾）：不补换行
+                pass
 
         cur = e
 
     parts.append(tex[cur:])
     out = "".join(parts)
 
-    # 合并多余空行：将连续≥2个“空行”（允许行内只含空白）压缩为恰好一个空行（两个换行）
-    out = re.sub(r"(?:[ \t]*(?:\r?\n)){3,}", "\n\n", out)
+    # 合并多余空行：把连续 ≥3 个换行（允许夹杂空白）压缩为恰好两个换行（一个空行）
+    out = re.sub(r'(?:[ \t]*(?:\r?\n)){3,}', '\n\n', out)
 
     return out
 

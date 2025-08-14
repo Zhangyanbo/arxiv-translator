@@ -13,10 +13,13 @@ __pycache__/
 *.out
 *.pdf
 *.tex
+*.tex.txt
 *.test
-*.txt
 *.ipynb
 *.json
+
+# Data
+translated.txt
 
 # Distribution / packaging
 .Python

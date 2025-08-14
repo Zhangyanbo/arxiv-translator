@@ -17,7 +17,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     load_dotenv()
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-    translator = LaTeXTranslator(client, chunk_size=args.chunk_size, save_path=args.save_path)
+    translator = LaTeXTranslator(
+        client, 
+        model=args.model,
+        chunk_size=args.chunk_size, 
+        save_path=args.save_path)
 
     source = open(args.source, 'r', encoding='utf-8').read()
     translator.translate(source)

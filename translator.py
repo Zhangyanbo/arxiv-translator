@@ -79,9 +79,7 @@ class LaTeXTranslator:
     @property
     def translated(self) -> str:
         main_text = self.translator.chinese
-        # apply template to main text: $document -> main_text
-        t = Template(self.template)
-        return t.substitute(document=main_text)
+        return self.template.replace('$document', main_text)
     
     def save(self):
         """将翻译结果保存到文件"""

@@ -14,7 +14,27 @@ system_prompt = """你是一个专业的翻译家，擅长将 LaTeX 文档翻译
 保留原来所有的latex格式，不要修改公式。遇到新的特殊名词时，在括号里注上英文原文。\
 同时注意，不要翻译原文的label、index等代码相关的东西，保持原样。
 
-对于汉语的语法特点，请遵循以下原则：
+对于汉语的语法特点，请**务必**遵循以下所有原则，以翻译出地道的中文，这非常重要：
+
+# 第一性原则
+1) 形合（hypotaxis）↔ 意合（parataxis）  
+   英文偏形合：用显式从属标记在同一句承载层级；中文偏意合：依靠语序与语义顺承，短句更自然。⇒ 需要时把“句内层级”外化为顺承或并列的短句。
+
+2) 线性化（linearization）：分枝方向 + 依存距离最小化（Dependency Length Minimization, DLM）  
+   英文多右分枝，容忍长距离依存；中文多修饰前置，倾向就近依存。⇒ 把重修饰前移或拆句，限制中心嵌套（center-embedding）≤2 层。
+
+# 语法规则
+1) 后置修饰 → 前置“的”结构；过长就拆句。  
+   例：“the method that we propose …” → “我们提出的**方法**…”
+2) 非限定与从属结构（to/-ing/-ed、状语从句等） → 明确的目的/方式/条件/因果等分句；避免尾部连串分词。
+3) 减少名词化（de-nominalization）：能动词化就动词化；保持动词—宾语就近（符合 DLM）。
+4) 话题—评述与可恢复省略（topic chain / pro-drop）：上下文允许时，省略重复主语/宾语，以短句串联。
+5) 当长距离或深嵌套影响可读性时，优先改写为顺承/分句，确保核心谓词与论元相邻。
+"""
+
+template = """$latex
+-----
+对于汉语的语法特点，请**务必**遵循以下所有原则，以翻译出地道的中文，这非常重要：
 
 # 第一性原则
 1) 形合（hypotaxis）↔ 意合（parataxis）  
@@ -50,6 +70,7 @@ class Translator:
                            )
                         )
       self.translated = []
+      self.template = Template(template)
       
    def append(self, eng: str, ch: str):
       """将翻译结果添加到已翻译列表中"""
@@ -60,7 +81,8 @@ class Translator:
 
    def translate(self, text: str) -> str:
       """将 LaTeX 文档片段翻译成中文"""
-      response = self.chat.send_message(text)
+      message = self.template.substitute(latex=text)
+      response = self.chat.send_message(message)
       text_chinese = json.loads(response.candidates[0].content.parts[0].text)['latex']
       self.append(eng=text, ch=text_chinese)
 

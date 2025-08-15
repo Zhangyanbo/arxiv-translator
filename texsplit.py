@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple, Optional
 import re
+from merge_line import remove_useless_newlines
 
 from pylatexenc.latexwalker import (
     LatexWalker,
@@ -205,6 +206,7 @@ def latex_cut(tex: str, L: int, remove_comment: bool=True) -> Dict[str, Any]:
         raise ValueError("L 必须是正整数")
 
     tex_nc = _remove_comments(tex) if remove_comment else tex
+    tex_nc = remove_useless_newlines(tex_nc)
 
     walker = LatexWalker(tex_nc)
     root_nodes, _, _ = walker.get_latex_nodes()

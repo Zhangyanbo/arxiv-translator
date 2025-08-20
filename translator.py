@@ -23,6 +23,19 @@ grammar = """对于汉语的语法特点，请**务必**遵循以下所有原则
 3) 减少名词化（de-nominalization）：能动词化就动词化；保持动词—宾语就近（符合 DLM）。
 4) 话题—评述与可恢复省略（topic chain / pro-drop）：上下文允许时，省略重复主语/宾语，以短句串联。
 5) 当长距离或深嵌套影响可读性时，优先改写为顺承/分句，确保核心谓词与论元相邻。
+
+# 补充规则
+- 【删轻动词】凡是“进行/开展/予以 + 动作动词”，若删除前项后语义不变，一律删除。
+  例：对节目**进行收看** → **收看**节目；**开展**讨论 → 讨论。
+
+- 【优先动词化】“X 的实现 / 对 X 的实现 / 实现对 X 的…”优先改为动词或“方法”结构。
+  例：LaTeX **换行的实现** → **如何在 LaTeX 中换行 / LaTeX 换行方法**；
+      **对数据的处理** → **处理数据**。
+
+- 【就近依存】尽量保持“动词—宾语”相邻；避免“对/对于…进行…”这类把动宾拆开的框架。
+  例：**对用户进行管理** → **管理用户**。
+
+- 【域外例外】仅当处于论文/技术报告中的“实现细节”小节标题或术语固定搭配时，可保留“X 的实现”。
 """
 
 system_prompt = f"""你是一个专业的翻译家，擅长将 LaTeX 文档翻译成中文。请确保翻译准确，并保留 LaTeX 语法结构。
@@ -45,9 +58,11 @@ class Translation(BaseModel):
 
 
 class Translator:
-    def __init__(self, client, model="gemini-2.5-flash"):
+    def __init__(self, client, model="gemini-2.5-flash", history=None):
         self.client = client
         self.model = model
+        if history is not None:
+            history = self.format_history(history)
         self.chat = client.chats.create(
                              model=self.model, 
                              config=types.GenerateContentConfig(
@@ -55,11 +70,26 @@ class Translator:
                                 response_mime_type="application/json",
                                 response_schema=Translation,
                                 thinking_config=types.ThinkingConfig(thinking_budget=1024)
-                             )
+                             ),
+                             history=history
                           )
         self.translated = []
         self.template = Template(template)
-       
+    
+    @staticmethod
+    def format_history(h):
+        from google.genai import types
+        history = []
+
+        for item in h:
+            if item['role'] in ['user']:
+                g_item = types.UserContent(parts=[types.Part(text=item['content'])])
+            elif item['role'] in ['assistant', 'model']:
+                g_item = types.Content(role="model", parts=[types.Part(text=item['content'])])
+            history.append(g_item)
+
+        return history
+
     def append(self, eng: str, ch: str):
         """将翻译结果添加到已翻译列表中"""
         self.translated.append({
@@ -99,8 +129,8 @@ def parse_usage(res):
     return create_report(total_prompt, cached, reasoning, output)
 
 class LaTeXTranslator:
-    def __init__(self, client, model="gemini-2.5-flash", chunk_size=3000, save_path='./translated.text'):
-        self.translator = Translator(client, model)
+    def __init__(self, client, model="gemini-2.5-flash", chunk_size=3000, save_path='./translated.text', history=None):
+        self.translator = Translator(client, model, history=history)
         self.chunk_size = chunk_size
         self.save_path = save_path
     

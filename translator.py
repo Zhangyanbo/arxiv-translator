@@ -30,7 +30,7 @@ grammar = """对于汉语的语法特点，请**务必**遵循以下所有原则
 
 - 【优先动词化】“X 的实现 / 对 X 的实现 / 实现对 X 的…”优先改为动词或“方法”结构。
   例：LaTeX **换行的实现** → **如何在 LaTeX 中换行 / LaTeX 换行方法**；
-      **对数据的处理** → **处理数据**。
+     **对数据的处理** → **处理数据**。
 
 - 【就近依存】尽量保持“动词—宾语”相邻；避免“对/对于…进行…”这类把动宾拆开的框架。
   例：**对用户进行管理** → **管理用户**。
@@ -54,106 +54,106 @@ template = """$latex
 """
 
 class Translation(BaseModel):
-    latex: str
+   latex: str
 
 
 class Translator:
-    def __init__(self, client, model="gemini-2.5-flash", history=None):
-        self.client = client
-        self.model = model
-        if history is not None:
-            history = self.format_history(history)
-        self.chat = client.chats.create(
-                             model=self.model, 
-                             config=types.GenerateContentConfig(
-                                system_instruction=system_prompt,
-                                response_mime_type="application/json",
-                                response_schema=Translation,
-                                thinking_config=types.ThinkingConfig(thinking_budget=1024)
-                             ),
-                             history=history
-                          )
-        self.translated = []
-        self.template = Template(template)
-    
-    @staticmethod
-    def format_history(h):
-        from google.genai import types
-        history = []
+   def __init__(self, client, model="gemini-2.5-flash", history=None):
+      self.client = client
+      self.model = model
+      if history is not None:
+         history = self.format_history(history)
+      self.chat = client.chats.create(
+                      model=self.model, 
+                      config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json",
+                        response_schema=Translation,
+                        thinking_config=types.ThinkingConfig(thinking_budget=1024)
+                      ),
+                      history=history
+                    )
+      self.translated = []
+      self.template = Template(template)
+   
+   @staticmethod
+   def format_history(h):
+      from google.genai import types
+      history = []
 
-        for item in h:
-            if item['role'] in ['user']:
-                g_item = types.UserContent(parts=[types.Part(text=item['content'])])
-            elif item['role'] in ['assistant', 'model']:
-                g_item = types.Content(role="model", parts=[types.Part(text=item['content'])])
-            history.append(g_item)
+      for item in h:
+         if item['role'] in ['user']:
+            g_item = types.UserContent(parts=[types.Part(text=item['content'])])
+         elif item['role'] in ['assistant', 'model']:
+            g_item = types.Content(role="model", parts=[types.Part(text=item['content'])])
+         history.append(g_item)
 
-        return history
+      return history
 
-    def append(self, eng: str, ch: str):
-        """将翻译结果添加到已翻译列表中"""
-        self.translated.append({
-              "english": eng,
-              "chinese": ch
-        })
+   def append(self, eng: str, ch: str):
+      """将翻译结果添加到已翻译列表中"""
+      self.translated.append({
+           "english": eng,
+           "chinese": ch
+      })
  
-    def translate(self, text: str) -> str:
-        """将 LaTeX 文档片段翻译成中文"""
-        message = self.template.substitute(latex=text)
-        response = self.chat.send_message(message)
-        text_chinese = json.loads(response.candidates[0].content.parts[0].text)['latex']
-        self.append(eng=text, ch=text_chinese)
-        return response
+   def translate(self, text: str) -> str:
+      """将 LaTeX 文档片段翻译成中文"""
+      message = self.template.substitute(latex=text)
+      response = self.chat.send_message(message)
+      text_chinese = json.loads(response.candidates[0].content.parts[0].text)['latex']
+      self.append(eng=text, ch=text_chinese)
+      return response
  
-    @property
-    def chinese(self) -> str:
-        """获取所有翻译结果的中文文本"""
-        return "\n".join([item['chinese'] for item in self.translated])
+   @property
+   def chinese(self) -> str:
+      """获取所有翻译结果的中文文本"""
+      return "\n".join([item['chinese'] for item in self.translated])
 
 
 def create_report(total_prompt, cached, reasoning, output):
-    return f"input: {total_prompt-cached} + [{cached} cached] -> output: [{reasoning}] + {output}"
+   return f"input: {total_prompt-cached} + [{cached} cached] -> output: [{reasoning}] + {output}"
 
 def parse_usage(res):
-    usage = res.usage_metadata
-    total_prompt = usage.prompt_token_count
+   usage = res.usage_metadata
+   total_prompt = usage.prompt_token_count
 
-    cached = usage.cached_content_token_count
-    cached = 0 if cached is None else cached
+   cached = usage.cached_content_token_count
+   cached = 0 if cached is None else cached
 
-    reasoning = usage.thoughts_token_count
-    reasoning = 0 if reasoning is None else reasoning
+   reasoning = usage.thoughts_token_count
+   reasoning = 0 if reasoning is None else reasoning
 
-    output = usage.candidates_token_count
+   output = usage.candidates_token_count
 
-    return create_report(total_prompt, cached, reasoning, output)
+   return create_report(total_prompt, cached, reasoning, output)
 
 class LaTeXTranslator:
-    def __init__(self, client, model="gemini-2.5-flash", chunk_size=3000, save_path='./translated.text', history=None):
-        self.translator = Translator(client, model, history=history)
-        self.chunk_size = chunk_size
-        self.save_path = save_path
-    
-    @property
-    def translated(self) -> str:
-        main_text = self.translator.chinese
-        return self.template.replace('$document', main_text)
-    
-    def save(self):
-        """将翻译结果保存到文件"""
-        with open(self.save_path, 'w', encoding='utf-8') as f:
-            f.write(self.translated)
-    
-    def translate(self, latex: str, max_n:int=None) -> str:
-        latex_chunks = latex_cut(latex, self.chunk_size)
-        self.template, self.chunks = latex_chunks['template'], latex_chunks['chunks']
+   def __init__(self, client, model="gemini-2.5-flash", chunk_size=3000, save_path='./translated.text', history=None):
+      self.translator = Translator(client, model, history=history)
+      self.chunk_size = chunk_size
+      self.save_path = save_path
+   
+   @property
+   def translated(self) -> str:
+      main_text = self.translator.chinese
+      return self.template.replace('$document', main_text)
+   
+   def save(self):
+      """将翻译结果保存到文件"""
+      with open(self.save_path, 'w', encoding='utf-8') as f:
+         f.write(self.translated)
+   
+   def translate(self, latex: str, max_n:int=None) -> str:
+      latex_chunks = latex_cut(latex, self.chunk_size)
+      self.template, self.chunks = latex_chunks['template'], latex_chunks['chunks']
 
-        if max_n is not None:
-            self.chunks = self.chunks[:max_n]
+      if max_n is not None:
+         self.chunks = self.chunks[:max_n]
 
-        pbar = tqdm(self.chunks, desc="Translating")
-        for chunk in pbar:
-            response = self.translator.translate(chunk)
-            usage_info = parse_usage(response)
-            pbar.set_postfix_str(usage_info)
-            self.save()
+      pbar = tqdm(self.chunks, desc="Translating")
+      for chunk in pbar:
+         response = self.translator.translate(chunk)
+         usage_info = parse_usage(response)
+         pbar.set_postfix_str(usage_info)
+         self.save()

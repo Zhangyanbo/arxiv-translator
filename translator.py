@@ -57,40 +57,58 @@ class Translation(BaseModel):
 
 
 class Translator:
-   def __init__(self, client, model="gemini-2.5-flash"):
-      self.client = client
-      self.model = model
-      self.chat = client.chats.create(
-                           model=self.model, 
-                           config=types.GenerateContentConfig(
-                              system_instruction=system_prompt,
-                              response_mime_type="application/json",
-                              response_schema=Translation,
-                              thinking_config=types.ThinkingConfig(thinking_budget=1024)
-                           )
-                        )
-      self.translated = []
-      self.template = Template(template)
-      
-   def append(self, eng: str, ch: str):
-      """将翻译结果添加到已翻译列表中"""
-      self.translated.append({
-            "english": eng,
-            "chinese": ch
-      })
+    def __init__(self, client, model="gemini-2.5-flash"):
+        self.client = client
+        self.model = model
+        self.chat = client.chats.create(
+                             model=self.model, 
+                             config=types.GenerateContentConfig(
+                                system_instruction=system_prompt,
+                                response_mime_type="application/json",
+                                response_schema=Translation,
+                                thinking_config=types.ThinkingConfig(thinking_budget=1024)
+                             )
+                          )
+        self.translated = []
+        self.template = Template(template)
+       
+    def append(self, eng: str, ch: str):
+        """将翻译结果添加到已翻译列表中"""
+        self.translated.append({
+              "english": eng,
+              "chinese": ch
+        })
+ 
+    def translate(self, text: str) -> str:
+        """将 LaTeX 文档片段翻译成中文"""
+        message = self.template.substitute(latex=text)
+        response = self.chat.send_message(message)
+        text_chinese = json.loads(response.candidates[0].content.parts[0].text)['latex']
+        self.append(eng=text, ch=text_chinese)
+        return response
+ 
+    @property
+    def chinese(self) -> str:
+        """获取所有翻译结果的中文文本"""
+        return "\n".join([item['chinese'] for item in self.translated])
 
-   def translate(self, text: str) -> str:
-      """将 LaTeX 文档片段翻译成中文"""
-      message = self.template.substitute(latex=text)
-      response = self.chat.send_message(message)
-      text_chinese = json.loads(response.candidates[0].content.parts[0].text)['latex']
-      self.append(eng=text, ch=text_chinese)
 
-   @property
-   def chinese(self) -> str:
-      """获取所有翻译结果的中文文本"""
-      return "\n".join([item['chinese'] for item in self.translated])
+def create_report(total_prompt, cached, reasoning, output):
+    return f"input: {total_prompt-cached} + [{cached} cached] -> output: [{reasoning}] + {output}"
 
+def parse_usage(res):
+    usage = res.usage_metadata
+    total_prompt = usage.prompt_token_count
+
+    cached = usage.cached_content_token_count
+    cached = 0 if cached is None else cached
+
+    reasoning = usage.thoughts_token_count
+    reasoning = 0 if reasoning is None else reasoning
+
+    output = usage.candidates_token_count
+
+    return create_report(total_prompt, cached, reasoning, output)
 
 class LaTeXTranslator:
     def __init__(self, client, model="gemini-2.5-flash", chunk_size=3000, save_path='./translated.text'):
@@ -108,10 +126,16 @@ class LaTeXTranslator:
         with open(self.save_path, 'w', encoding='utf-8') as f:
             f.write(self.translated)
     
-    def translate(self, latex: str) -> str:
+    def translate(self, latex: str, max_n:int=None) -> str:
         latex_chunks = latex_cut(latex, self.chunk_size)
         self.template, self.chunks = latex_chunks['template'], latex_chunks['chunks']
 
-        for chunk in tqdm(self.chunks, desc="Translating LaTeX chunks"):
-            self.translator.translate(chunk)
+        if max_n is not None:
+            self.chunks = self.chunks[:max_n]
+
+        pbar = tqdm(self.chunks, desc="Translating")
+        for chunk in pbar:
+            response = self.translator.translate(chunk)
+            usage_info = parse_usage(response)
+            pbar.set_postfix_str(usage_info)
             self.save()

@@ -1,6 +1,6 @@
 # ArXiv 论文翻译器
 
-本项目使用大语言模型（LLM）自动将 $\LaTeX$ 格式的论文翻译成中文，并完整保留原始的 LaTeX 格式、公式和排版。
+本项目使用大语言模型（LLM）自动将 $\LaTeX$ 格式的论文翻译成中文，并完整保留原始的 $\LaTeX$ 格式、公式和排版。
 
 ## 主要功能
 
@@ -38,14 +38,14 @@ python main.py --source <你的LaTeX文件路径>
 
 你还可以使用一些可选参数：
 
-- `--save_path`: 指定翻译后文件的保存路径（默认为 `translated.txt`）。
+- `--output`: 指定翻译后文件的保存路径（默认为 `translated.txt`）。
 - `--chunk_size`: 每个翻译块的大小（默认为 3000 字符）。
 - `--model`: 使用的 Gemini 模型（默认为 `gemini-2.5-flash`，可选 `gemini-2.5-pro`）。
 
 例如：
 
 ```bash
-python main.py --source my_paper.tex --save_path my_paper_translated.tex
+python main.py --source my_paper.tex --output my_paper_translated.tex
 ```
 
 ### 4. 编译译文
@@ -57,6 +57,49 @@ python main.py --source my_paper.tex --save_path my_paper_translated.tex
 ```
 
 之后，使用 **XeLaTeX** 引擎编译该文件，即可生成带中文的 PDF 文档。
+
+好，给你一段极简、可直接拷到 README 的说明，启动器名为 **`tex-trans`**，默认 `conda` 环境名 `translate`，已内置实时输出。
+
+## 一键启动：`tex-trans`
+
+### 安装
+
+1）新建启动脚本并编辑变量：
+
+```bash
+vim ~/bin/tex-trans
+```
+
+粘贴以下内容（按需改 `ENV_NAME` 与 `PROJECT_DIR` 的绝对路径）：
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_NAME="<你的conda环境名>"
+PROJECT_DIR="/<path>/arxiv-translator"
+
+# 实时输出：--live-stream + python -u
+export PYTHONUNBUFFERED=1
+exec conda run -n "$ENV_NAME" --live-stream python -u "$PROJECT_DIR/main.py" "$@"
+```
+
+2）加入 PATH 并赋可执行权限：
+
+```bash
+mkdir -p ~/bin
+chmod +x ~/bin/tex-trans
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 使用
+
+在任意目录运行：
+
+```bash
+tex-trans --source ... --output ...
+```
 
 ## 代码结构简介
 
@@ -71,13 +114,13 @@ python main.py --source my_paper.tex --save_path my_paper_translated.tex
 这个文件包含了翻译功能的核心逻辑。
 
 - **`Translator` class**: 一个围绕 Gemini API 的底层封装。它负责维护与模型的会话（chat），发送待翻译的文本块，并接收和解析翻译结果。其中的 `system_prompt` 对模型的翻译行为和风格进行了详细的指导。
-- **`LaTeXTranslator` class**: 上层控制器。它接收完整的 LaTeX 文本，通过调用 `texsplit.py` 中的 `latex_cut` 函数进行智能切分。然后，它会遍历所有文本块，使用 `Translator` 实例进行翻译，并将最终结果重新组合成完整的、可编译的 LaTeX 文档。
+- **`LaTeXTranslator` class**: 上层控制器。它接收完整的 $\LaTeX$ 文本，通过调用 `texsplit.py` 中的 `latex_cut` 函数进行智能切分。然后，它会遍历所有文本块，使用 `Translator` 实例进行翻译，并将最终结果重新组合成完整的、可编译的 $\LaTeX$ 文档。
 
 ### `texsplit.py`
 
-该模块提供了智能切分 LaTeX 源码的功能。
+该模块提供了智能切分 $\LaTeX$ 源码的功能。
 
-- **`latex_cut(tex: str, L: int)` function**: 这是此模块的核心。它首先会利用 `pylatexenc` 库解析 LaTeX 文档，找到 `\begin{document}` 和 `\end{document}` 之间的正文部分。接着，它会寻找合适的切分点（如段落之间、顶层环境的边界），以避免在行内公式或复杂命令中进行切分。函数最终返回一个包含“文档模板”和多个“文本块”的字典，供 `LaTeXTranslator` 使用。
+- **`latex_cut(tex: str, L: int)` function**: 这是此模块的核心。它首先会利用 `pylatexenc` 库解析 $\LaTeX$ 文档，找到 `\begin{document}` 和 `\end{document}` 之间的正文部分。接着，它会寻找合适的切分点（如段落之间、顶层环境的边界），以避免在行内公式或复杂命令中进行切分。函数最终返回一个包含“文档模板”和多个“文本块”的字典，供 `LaTeXTranslator` 使用。
 
 ## License
 
